@@ -23,11 +23,9 @@ const JS_RESERVED_KEYWORDS = [
  * @returns {Promise<object>} - Swagger数据对象
  */
 async function getSwaggerData(source) {
-  // 检查是否为URL
   if (source.startsWith('http://') || source.startsWith('https://')) {
     return fetchSwaggerFromUrl(source);
   } else {
-    // 否则视为文件路径
     return readSwaggerFromFile(source);
   }
 }
@@ -96,30 +94,31 @@ function readSwaggerFromFile(filePath) {
 }
 
 /**
- * 生成API文件
+ * 生成API文件，并生成一个总的自动生成文件(api.generated.js)用于重新导出所有API接口
  * @param {object|string} swaggerData - Swagger数据对象或路径/URL
  * @param {string} outputDir - 输出目录
  */
 async function generateAxiosFiles(swaggerData, outputDir) {
   try {
-    // 如果swaggerData是字符串，则尝试获取数据
     if (typeof swaggerData === 'string') {
       swaggerData = await getSwaggerData(swaggerData);
     }
     
-    // 解析 Swagger 数据
     const basePath = (swaggerData.basePath || '').replace(/\/$/, '');
     const paths = swaggerData.paths || {};
     const tagsMap = {};
-
+    
     // 按标签分类API
     categorizeApisByTags(paths, tagsMap);
     
     // 确保输出目录存在
     ensureDirectoryExists(outputDir);
     
-    // 为每个标签生成API文件
-    await generateApiFilesForTags(tagsMap, basePath, outputDir);
+    // 为各个标签生成API文件，并获取生成的文件名列表（不含扩展名）
+    const generatedFiles = await generateApiFilesForTags(tagsMap, basePath, outputDir);
+    
+    // 生成统一的api.generated.js文件，用于重新导出所有API接口
+    generateIndexFile(generatedFiles, outputDir);
     
     return { success: true, message: 'API文件生成成功' };
   } catch (error) {
@@ -136,12 +135,10 @@ function categorizeApisByTags(paths, tagsMap) {
   Object.entries(paths).forEach(([apiPath, methods]) => {
     Object.entries(methods).forEach(([method, operation]) => {
       if (!operation.tags || operation.tags.length === 0) return;
-      
       const tag = operation.tags[0];
       if (!tagsMap[tag]) {
         tagsMap[tag] = [];
       }
-      
       tagsMap[tag].push({ 
         path: apiPath, 
         method: method.toLowerCase(), 
@@ -162,19 +159,40 @@ function ensureDirectoryExists(directory) {
 }
 
 /**
- * 为所有标签生成API文件
+ * 为所有标签生成API文件，并返回生成的文件（不含扩展名）列表
  * @param {object} tagsMap - 标签映射对象
  * @param {string} basePath - API基础路径
  * @param {string} outputDir - 输出目录
+ * @returns {Promise<Array<string>>} - 生成的文件名数组（不含扩展名）
  */
 async function generateApiFilesForTags(tagsMap, basePath, outputDir) {
+  const generatedFiles = [];
   for (const [tag, operations] of Object.entries(tagsMap)) {
+    const sanitizedTag = sanitizeTagName(tag);
     const fileContent = generateApiFileContent(operations, tag);
-    
-    // 写入文件
-    const filePath = path.join(outputDir, `${sanitizeTagName(tag)}.js`);
+    const filePath = path.join(outputDir, `${sanitizedTag}.js`);
     fs.writeFileSync(filePath, fileContent, 'utf8');
+    generatedFiles.push(sanitizedTag);
   }
+  return generatedFiles;
+}
+
+/**
+ * 生成统一的api.generated.js文件，用于重新导出所有自动生成的API接口
+ * @param {Array<string>} fileNames - 生成的文件名数组（不含扩展名）
+ * @param {string} outputDir - 输出目录
+ */
+function generateIndexFile(fileNames, outputDir) {
+  let indexContent = 
+`/**
+ * 该文件由代码生成器自动生成，请不要直接修改
+ */
+`;
+  fileNames.forEach(fileName => {
+    indexContent += `export * from './${fileName}';\n`;
+  });
+  const indexPath = path.join(outputDir, 'api.generated.js');
+  fs.writeFileSync(indexPath, indexContent, 'utf8');
 }
 
 /**
@@ -186,40 +204,25 @@ async function generateApiFilesForTags(tagsMap, basePath, outputDir) {
 function generateApiFileContent(operations, tag) {
   let fileContent = '';
   
-  // 保留标准导入头
+  // 标准导入
   fileContent += "import request from '@/utils/request';\n";
   fileContent += "import { basePath } from '../base';\n";
   fileContent += `import { moduleNormal } from './module';\n\n`;
   fileContent += "const path0 = ${basePath};\n";
   fileContent += "const path = ${basePath}/${moduleNormal};\n\n";
   
-  // 记录已使用的函数名，避免冲突
   const usedFunctionNames = new Set();
   
-  // 生成每个API函数
   operations.forEach(op => {
     const { path: apiPath, method, operation } = op;
-    
-    // 生成函数名，避免关键字和重复
     const funcName = getSafeFunctionName(operation, usedFunctionNames);
-    
-    // 生成参数列表
     const paramsList = generateParamsList(operation);
-    
-    // 生成JSDoc注释
     const jsDocComment = generateJSDocComment(operation);
     fileContent += jsDocComment;
-    
-    // 生成函数定义
     fileContent += `export function ${funcName}(${paramsList}) {\n`;
-    
-    // 构造URL
     const urlTemplate = generateUrlTemplate(apiPath, operation);
     fileContent += `  const url = \`${urlTemplate}\`;\n`;
-    
-    // 生成请求调用
     fileContent += generateRequestCall(method, operation);
-    
     fileContent += `}\n\n`;
   });
   
@@ -234,20 +237,15 @@ function generateApiFileContent(operations, tag) {
  */
 function getSafeFunctionName(operation, usedNames) {
   let name = cleanFunctionName(operation);
-  
-  // 如果是关键字，添加Api后缀
   if (JS_RESERVED_KEYWORDS.includes(name)) {
     name += 'Api';
   }
-  
-  // 处理命名冲突
   let uniqueName = name;
   let counter = 1;
   while (usedNames.has(uniqueName)) {
     uniqueName = `${name}${counter}`;
     counter++;
   }
-  
   usedNames.add(uniqueName);
   return uniqueName;
 }
@@ -258,18 +256,12 @@ function getSafeFunctionName(operation, usedNames) {
  * @returns {string} - 清理后的函数名
  */
 function cleanFunctionName(operation) {
-  // 如果有operationId，使用它；否则根据summary生成
   if (operation.operationId) {
-    // 移除Using[HTTP方法]后缀和数字后缀
     let name = operation.operationId
                .replace(/Using(POST|GET|PUT|DELETE|PATCH)(_\d+)?$/i, '')
-               .replace(/_\d+$/, ''); // 移除末尾的_数字后缀
-    
-    // 确保首字母小写（符合驼峰命名）
+               .replace(/_\d+$/, '');
     return name.charAt(0).toLowerCase() + name.slice(1);
   }
-  
-  // 简单转换：去空格转驼峰
   return operation.summary 
     ? operation.summary
         .toLowerCase()
@@ -285,24 +277,16 @@ function cleanFunctionName(operation) {
  */
 function generateJSDocComment(operation) {
   let comment = '/**\n';
-  
-  // 添加函数描述
   if (operation.description || operation.summary) {
     comment += ` * ${operation.description || operation.summary}\n`;
   }
-  
-  // 添加参数描述
   if (operation.parameters && operation.parameters.length > 0) {
     comment += ' *\n';
-    
-    // 处理路径参数
     operation.parameters
       .filter(p => p.in === 'path')
       .forEach(param => {
         comment += ` * @param {${mapSwaggerTypeToJSType(param)}} ${param.name} ${param.description || ''}\n`;
       });
-    
-    // 处理查询参数
     const queryParams = operation.parameters.filter(p => p.in === 'query');
     if (queryParams.length > 0) {
       comment += ` * @param {object} params 查询参数\n`;
@@ -310,8 +294,6 @@ function generateJSDocComment(operation) {
         comment += ` * @param {${mapSwaggerTypeToJSType(param)}} params.${param.name} ${param.description || ''}\n`;
       });
     }
-    
-    // 处理请求体参数
     const bodyParams = operation.parameters.filter(p => p.in === 'body' || p.in === 'formData');
     if (bodyParams.length > 0) {
       comment += ` * @param {object} data 请求数据\n`;
@@ -329,13 +311,10 @@ function generateJSDocComment(operation) {
       });
     }
   }
-  
-  // 添加返回值描述
   if (operation.responses) {
     const successResponse = operation.responses['200'] || operation.responses['201'];
     if (successResponse) {
       let returnType = 'Promise<any>';
-      
       if (successResponse.schema) {
         if (successResponse.schema.$ref) {
           const typeName = successResponse.schema.$ref.split('/').pop();
@@ -351,7 +330,6 @@ function generateJSDocComment(operation) {
           returnType = `Promise<${mapSwaggerTypeToJSType(successResponse.schema)}>`;
         }
       }
-      
       comment += ` * @returns {${returnType}} ${successResponse.description || '请求响应'}\n`;
     } else {
       comment += ` * @returns {Promise<any>} 请求响应\n`;
@@ -359,7 +337,6 @@ function generateJSDocComment(operation) {
   } else {
     comment += ` * @returns {Promise<any>} 请求响应\n`;
   }
-  
   comment += ' */\n';
   return comment;
 }
@@ -376,7 +353,6 @@ function mapSwaggerTypeToJSType(param) {
     }
     param = param.schema;
   }
-  
   switch (param.type) {
     case 'integer':
     case 'number':
@@ -402,29 +378,13 @@ function mapSwaggerTypeToJSType(param) {
 }
 
 /**
- * 添加操作描述注释
- * @param {object} operation - API操作对象
- * @param {string} fileContent - 文件内容，将被修改
- */
-function addOperationDescription(operation, fileContent) {
-  if (operation.description) {
-    fileContent += `// ${operation.description}\n`;
-  } else if (operation.summary) {
-    fileContent += `// ${operation.summary}\n`;
-  }
-}
-
-/**
  * 生成URL模板
  * @param {string} apiPath - API路径
  * @param {object} operation - API操作对象
  * @returns {string} - URL模板
  */
 function generateUrlTemplate(apiPath, operation) {
-  // 使用path变量作为basePath
   let urlTemplate = `\${path}${apiPath}`;
-  
-  // 替换路径参数
   if (operation.parameters) {
     operation.parameters
       .filter(p => p.in === 'path')
@@ -433,7 +393,6 @@ function generateUrlTemplate(apiPath, operation) {
         urlTemplate = urlTemplate.replace(`{${name}}`, `\${${name}}`);
       });
   }
-  
   return urlTemplate;
 }
 
@@ -446,39 +405,17 @@ function generateUrlTemplate(apiPath, operation) {
 function generateRequestCall(method, operation) {
   const hasQuery = operation.parameters && operation.parameters.some(p => p.in === 'query');
   const hasBody = operation.parameters && operation.parameters.some(p => p.in === 'body' || p.in === 'formData');
-  
   let requestCode = '  return request({\n';
   requestCode += '    url,\n';
   requestCode += `    method: '${method.toUpperCase()}',\n`;
-  
   if (hasQuery) {
     requestCode += '    params,\n';
   }
-  
   if (hasBody) {
     requestCode += '    data,\n';
   }
-  
   requestCode += '  });\n';
-  
   return requestCode;
-}
-
-/**
- * 生成函数名
- * @param {object} operation - API操作对象
- * @returns {string} - 函数名
- */
-function generateFunctionName(operation) {
-  // 如果有operationId，使用它；否则根据summary生成
-  if (operation.operationId) {
-    return operation.operationId.replace(/Using(POST|GET|PUT|DELETE)$/i, '');
-  }
-  
-  // 简单转换：去空格转驼峰
-  return operation.summary 
-    ? operation.summary.replace(/\s+(.)/g, (match, char) => char.toUpperCase()).replace(/\s/g, '')
-    : 'unnamedFunction';
 }
 
 /**
@@ -488,23 +425,16 @@ function generateFunctionName(operation) {
  */
 function generateParamsList(operation) {
   const params = [];
-  
   if (operation.parameters) {
-    // 路径参数：逐个添加
     operation.parameters.filter(p => p.in === 'path')
       .forEach(p => params.push(p.name));
-    
-    // 如果有query参数，统一加入params对象
     if (operation.parameters.some(p => p.in === 'query')) {
       params.push('params');
     }
-    
-    // 如果有请求体，则加入data参数
     if (operation.parameters.some(p => p.in === 'body' || p.in === 'formData')) {
       params.push('data');
     }
   }
-  
   return params.join(', ');
 }
 
