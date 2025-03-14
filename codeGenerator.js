@@ -47,11 +47,9 @@ function fetchSwaggerFromUrl(swaggerUrl) {
       method: 'GET'
     }, (response) => {
       let data = '';
-      
       response.on('data', (chunk) => {
         data += chunk;
       });
-      
       response.on('end', () => {
         try {
           const swaggerData = JSON.parse(data);
@@ -82,7 +80,6 @@ function readSwaggerFromFile(filePath) {
         reject(new Error(`读取Swagger文件失败: ${err.message}`));
         return;
       }
-      
       try {
         const swaggerData = JSON.parse(data);
         resolve(swaggerData);
@@ -94,7 +91,7 @@ function readSwaggerFromFile(filePath) {
 }
 
 /**
- * 生成API文件，并生成一个总的自动生成文件(api.generated.js)用于重新导出所有API接口
+ * 生成API文件对（generated 与 custom）
  * @param {object|string} swaggerData - Swagger数据对象或路径/URL
  * @param {string} outputDir - 输出目录
  */
@@ -114,11 +111,8 @@ async function generateAxiosFiles(swaggerData, outputDir) {
     // 确保输出目录存在
     ensureDirectoryExists(outputDir);
     
-    // 为各个标签生成API文件，并获取生成的文件名列表（不含扩展名）
-    const generatedFiles = await generateApiFilesForTags(tagsMap, basePath, outputDir);
-    
-    // 生成统一的api.generated.js文件，用于重新导出所有API接口
-    generateIndexFile(generatedFiles, outputDir);
+    // 为各个标签生成API文件对（.generated.js 和 .custom.js）
+    await generateApiFilesForTags(tagsMap, basePath, outputDir);
     
     return { success: true, message: 'API文件生成成功' };
   } catch (error) {
@@ -159,40 +153,49 @@ function ensureDirectoryExists(directory) {
 }
 
 /**
- * 为所有标签生成API文件，并返回生成的文件（不含扩展名）列表
+ * 为所有标签生成API文件对：每个标签生成 .generated.js 和对应的 .custom.js（如果自定义文件不存在）
  * @param {object} tagsMap - 标签映射对象
  * @param {string} basePath - API基础路径
  * @param {string} outputDir - 输出目录
- * @returns {Promise<Array<string>>} - 生成的文件名数组（不含扩展名）
  */
 async function generateApiFilesForTags(tagsMap, basePath, outputDir) {
-  const generatedFiles = [];
   for (const [tag, operations] of Object.entries(tagsMap)) {
     const sanitizedTag = sanitizeTagName(tag);
-    const fileContent = generateApiFileContent(operations, tag);
-    const filePath = path.join(outputDir, `${sanitizedTag}.js`);
-    fs.writeFileSync(filePath, fileContent, 'utf8');
-    generatedFiles.push(sanitizedTag);
+    // 生成自动生成文件，文件名格式：{sanitizedTag}.generated.js
+    const generatedFileContent = generateApiFileContent(operations, tag);
+    const generatedFilePath = path.join(outputDir, `${sanitizedTag}.generated.js`);
+    fs.writeFileSync(generatedFilePath, generatedFileContent, 'utf8');
+    
+    // 如果对应的自定义文件不存在，则生成默认模板
+    const customFilePath = path.join(outputDir, `${sanitizedTag}.custom.js`);
+    if (!fs.existsSync(customFilePath)) {
+      const customContent = generateCustomFileTemplate(sanitizedTag, tag);
+      fs.writeFileSync(customFilePath, customContent, 'utf8');
+    }
   }
-  return generatedFiles;
 }
 
 /**
- * 生成统一的api.generated.js文件，用于重新导出所有自动生成的API接口
- * @param {Array<string>} fileNames - 生成的文件名数组（不含扩展名）
- * @param {string} outputDir - 输出目录
+ * 生成自定义文件模板
+ * @param {string} sanitizedTag - 清洗后的tag名称（用于文件名）
+ * @param {string} tag - 原始tag名称（用于提示信息）
+ * @returns {string} - 自定义文件模板内容
  */
-function generateIndexFile(fileNames, outputDir) {
-  let indexContent = 
-`/**
- * 该文件由代码生成器自动生成，请不要直接修改
+function generateCustomFileTemplate(sanitizedTag, tag) {
+  return `/**
+ * 该文件用于对 ${tag} 模块的自动生成 API 接口进行自定义扩展，
+ * 请勿直接修改 ${sanitizedTag}.generated.js 文件。
  */
+
+// 重新导出所有自动生成的接口
+export * from './${sanitizedTag}.generated';
+
+// 在这里覆盖或扩展需要定制的接口，例如：
+// export function someApi(...args) {
+//   // 自定义逻辑
+//   return require('./${sanitizedTag}.generated').someApi(...args);
+// }
 `;
-  fileNames.forEach(fileName => {
-    indexContent += `export * from './${fileName}';\n`;
-  });
-  const indexPath = path.join(outputDir, 'api.generated.js');
-  fs.writeFileSync(indexPath, indexContent, 'utf8');
 }
 
 /**
@@ -207,9 +210,9 @@ function generateApiFileContent(operations, tag) {
   // 标准导入
   fileContent += "import request from '@/utils/request';\n";
   fileContent += "import { basePath } from '../base';\n";
-  fileContent += `import { moduleNormal } from './module';\n\n`;
-  fileContent += "const path0 = ${basePath};\n";
-  fileContent += "const path = ${basePath}/${moduleNormal};\n\n";
+  fileContent += "import { moduleNormal } from './module';\n\n";
+  fileContent += "const path0 = `${basePath}`;\n";
+  fileContent += "const path = `${basePath}/${moduleNormal}`;\n\n";
   
   const usedFunctionNames = new Set();
   
