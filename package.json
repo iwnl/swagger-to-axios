@@ -2,7 +2,7 @@
   "name": "swagger-to-axios",
   "displayName": "Swagger to Axios",
   "description": "A VS Code extension to convert Swagger API to Axios-based requests",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "publisher": "ZYL",
   "engines": {
     "vscode": "^1.75.0"

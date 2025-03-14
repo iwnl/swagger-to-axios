@@ -47,9 +47,11 @@ function fetchSwaggerFromUrl(swaggerUrl) {
       method: 'GET'
     }, (response) => {
       let data = '';
+      
       response.on('data', (chunk) => {
         data += chunk;
       });
+      
       response.on('end', () => {
         try {
           const swaggerData = JSON.parse(data);
@@ -80,6 +82,7 @@ function readSwaggerFromFile(filePath) {
         reject(new Error(`读取Swagger文件失败: ${err.message}`));
         return;
       }
+      
       try {
         const swaggerData = JSON.parse(data);
         resolve(swaggerData);
@@ -91,7 +94,7 @@ function readSwaggerFromFile(filePath) {
 }
 
 /**
- * 生成API文件对（generated 与 custom）
+ * 生成API文件对（.generated.js 与 .custom.js）
  * @param {object|string} swaggerData - Swagger数据对象或路径/URL
  * @param {string} outputDir - 输出目录
  */
@@ -100,6 +103,8 @@ async function generateAxiosFiles(swaggerData, outputDir) {
     if (typeof swaggerData === 'string') {
       swaggerData = await getSwaggerData(swaggerData);
     }
+    // 保存definitions到全局变量，供后续展开schema使用
+    global.swaggerDefinitions = swaggerData.definitions || {};
     
     const basePath = (swaggerData.basePath || '').replace(/\/$/, '');
     const paths = swaggerData.paths || {};
@@ -129,10 +134,12 @@ function categorizeApisByTags(paths, tagsMap) {
   Object.entries(paths).forEach(([apiPath, methods]) => {
     Object.entries(methods).forEach(([method, operation]) => {
       if (!operation.tags || operation.tags.length === 0) return;
+      
       const tag = operation.tags[0];
       if (!tagsMap[tag]) {
         tagsMap[tag] = [];
       }
+      
       tagsMap[tag].push({ 
         path: apiPath, 
         method: method.toLowerCase(), 
@@ -240,15 +247,18 @@ function generateApiFileContent(operations, tag) {
  */
 function getSafeFunctionName(operation, usedNames) {
   let name = cleanFunctionName(operation);
+  
   if (JS_RESERVED_KEYWORDS.includes(name)) {
     name += 'Api';
   }
+  
   let uniqueName = name;
   let counter = 1;
   while (usedNames.has(uniqueName)) {
     uniqueName = `${name}${counter}`;
     counter++;
   }
+  
   usedNames.add(uniqueName);
   return uniqueName;
 }
@@ -265,6 +275,7 @@ function cleanFunctionName(operation) {
                .replace(/_\d+$/, '');
     return name.charAt(0).toLowerCase() + name.slice(1);
   }
+  
   return operation.summary 
     ? operation.summary
         .toLowerCase()
@@ -274,22 +285,80 @@ function cleanFunctionName(operation) {
 }
 
 /**
- * 生成JSDoc注释
+ * 递归展开 schema 的属性，返回数组，每个元素为一行注释
+ * 增加 visited 集合以避免循环引用
+ * @param {string} prefix - 前缀（例如 data 或 response）
+ * @param {object} schema - schema 对象
+ * @param {Set} visited - 已访问的 $ref 名称集合
+ * @returns {Array<string>}
+ */
+function generateSchemaParamsLines(prefix, schema, visited = new Set()) {
+  let lines = [];
+  
+  if (schema.$ref) {
+    const refName = schema.$ref.split('/').pop();
+    if (visited.has(refName)) {
+      lines.push(` * @param {object} ${prefix} (Circular reference: ${refName})`);
+      return lines;
+    }
+    visited.add(refName);
+    const def = global.swaggerDefinitions ? global.swaggerDefinitions[refName] : null;
+    if (def) {
+      lines = lines.concat(generateSchemaParamsLines(prefix, def, visited));
+    } else {
+      lines.push(` * @param {object} ${prefix} ${schema.description || ''}`);
+    }
+    visited.delete(refName);
+  } else if (schema.type === 'object') {
+    if (schema.properties) {
+      for (const [propName, propSchema] of Object.entries(schema.properties)) {
+        if (propSchema.type === 'object' && propSchema.properties) {
+          lines.push(` * @param {object} ${prefix}.${propName} ${propSchema.description || ''}`);
+          lines = lines.concat(generateSchemaParamsLines(`${prefix}.${propName}`, propSchema, visited));
+        } else if (propSchema.type === 'array') {
+          if (propSchema.items && (propSchema.items.$ref || (propSchema.items.type === 'object' && propSchema.items.properties))) {
+            lines.push(` * @param {Array} ${prefix}.${propName} ${propSchema.description || ''}`);
+            lines = lines.concat(generateSchemaParamsLines(`${prefix}.${propName}`, propSchema.items, visited));
+          } else {
+            lines.push(` * @param {Array<${mapSwaggerTypeToJSType(propSchema.items)}>} ${prefix}.${propName} ${propSchema.description || ''}`);
+          }
+        } else {
+          lines.push(` * @param {${mapSwaggerTypeToJSType(propSchema)}} ${prefix}.${propName} ${propSchema.description || ''}`);
+        }
+      }
+    } else {
+      lines.push(` * @param {object} ${prefix} ${schema.description || ''}`);
+    }
+  } else {
+    // 基本类型
+    lines.push(` * @param {${schema.type}} ${prefix} ${schema.description || ''}`);
+  }
+  
+  return lines;
+}
+
+/**
+ * 生成JSDoc注释，支持对所有标注了schema的地方递归展开属性信息（但响应部分不展开）
  * @param {object} operation - API操作对象
  * @returns {string} - JSDoc注释字符串
  */
 function generateJSDocComment(operation) {
   let comment = '/**\n';
+  
   if (operation.description || operation.summary) {
     comment += ` * ${operation.description || operation.summary}\n`;
   }
+  
   if (operation.parameters && operation.parameters.length > 0) {
     comment += ' *\n';
-    operation.parameters
-      .filter(p => p.in === 'path')
+    
+    // 处理路径参数
+    operation.parameters.filter(p => p.in === 'path')
       .forEach(param => {
         comment += ` * @param {${mapSwaggerTypeToJSType(param)}} ${param.name} ${param.description || ''}\n`;
       });
+    
+    // 处理查询参数
     const queryParams = operation.parameters.filter(p => p.in === 'query');
     if (queryParams.length > 0) {
       comment += ` * @param {object} params 查询参数\n`;
@@ -297,49 +366,61 @@ function generateJSDocComment(operation) {
         comment += ` * @param {${mapSwaggerTypeToJSType(param)}} params.${param.name} ${param.description || ''}\n`;
       });
     }
+    
+    // 处理请求体参数（body 或 formData）
     const bodyParams = operation.parameters.filter(p => p.in === 'body' || p.in === 'formData');
     if (bodyParams.length > 0) {
-      comment += ` * @param {object} data 请求数据\n`;
       bodyParams.forEach(param => {
         if (param.in === 'body' && param.schema) {
           if (param.schema.$ref) {
-            const typeName = param.schema.$ref.split('/').pop();
-            comment += ` * @param {${typeName}} data 请求体数据 ${param.description || ''}\n`;
+            const refName = param.schema.$ref.split('/').pop();
+            comment += ` * @param {object} data 请求数据\n`;
+            comment += ` * @param {${refName}} data 请求体数据 ${param.name}\n`;
+            const def = global.swaggerDefinitions ? global.swaggerDefinitions[refName] : null;
+            if (def) {
+              const lines = generateSchemaParamsLines('data', def);
+              // 直接输出所有展开的属性
+              lines.forEach(line => {
+                comment += line + "\n";
+              });
+            }
+          } else if (param.schema.type === 'object') {
+            comment += ` * @param {object} ${param.name} 请求体数据 ${param.description || ''}\n`;
+            const lines = generateSchemaParamsLines(param.name, param.schema);
+            lines.forEach(line => {
+              comment += line + "\n";
+            });
           } else {
-            comment += ` * @param {object} data 请求体数据 ${param.description || ''}\n`;
+            comment += ` * @param {${mapSwaggerTypeToJSType(param)}} ${param.name} ${param.description || ''}\n`;
           }
         } else {
-          comment += ` * @param {${mapSwaggerTypeToJSType(param)}} data.${param.name} ${param.description || ''}\n`;
+          comment += ` * @param {${mapSwaggerTypeToJSType(param)}} ${param.name} ${param.description || ''}\n`;
         }
       });
     }
   }
+  
+  // 处理响应注释：不展开schema，仅输出返回类型
   if (operation.responses) {
     const successResponse = operation.responses['200'] || operation.responses['201'];
     if (successResponse) {
-      let returnType = 'Promise<any>';
       if (successResponse.schema) {
         if (successResponse.schema.$ref) {
-          const typeName = successResponse.schema.$ref.split('/').pop();
-          returnType = `Promise<${typeName}>`;
-        } else if (successResponse.schema.type === 'array' && successResponse.schema.items) {
-          if (successResponse.schema.items.$ref) {
-            const typeName = successResponse.schema.items.$ref.split('/').pop();
-            returnType = `Promise<${typeName}[]>`;
-          } else {
-            returnType = `Promise<${mapSwaggerTypeToJSType(successResponse.schema.items)}[]>`;
-          }
+          const refName = successResponse.schema.$ref.split('/').pop();
+          comment += ` * @returns {${refName}} ${successResponse.description || '请求响应'}\n`;
         } else {
-          returnType = `Promise<${mapSwaggerTypeToJSType(successResponse.schema)}>`;
+          comment += ` * @returns {${mapSwaggerTypeToJSType(successResponse.schema)}} ${successResponse.description || '请求响应'}\n`;
         }
+      } else {
+        comment += ` * @returns {Promise<any>} 请求响应\n`;
       }
-      comment += ` * @returns {${returnType}} ${successResponse.description || '请求响应'}\n`;
     } else {
       comment += ` * @returns {Promise<any>} 请求响应\n`;
     }
   } else {
     comment += ` * @returns {Promise<any>} 请求响应\n`;
   }
+  
   comment += ' */\n';
   return comment;
 }
@@ -356,6 +437,7 @@ function mapSwaggerTypeToJSType(param) {
     }
     param = param.schema;
   }
+  
   switch (param.type) {
     case 'integer':
     case 'number':
@@ -366,11 +448,11 @@ function mapSwaggerTypeToJSType(param) {
       if (param.items) {
         if (param.items.$ref) {
           const itemType = param.items.$ref.split('/').pop();
-          return `${itemType}[]`;
+          return `Array<${itemType}>`;
         }
-        return `${mapSwaggerTypeToJSType(param.items)}[]`;
+        return `Array<${mapSwaggerTypeToJSType(param.items)}>`;
       }
-      return 'any[]';
+      return 'Array<any>';
     case 'object':
     case 'file':
       return 'object';
