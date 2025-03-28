@@ -2,7 +2,7 @@
   "name": "swagger-to-axios",
   "displayName": "Swagger to Axios",
   "description": "A VS Code extension to convert Swagger API to Axios-based requests",
-  "version": "1.0.10",
+  "version": "1.0.12",
   "publisher": "ZYL",
   "engines": {
     "vscode": "^1.75.0"
@@ -19,8 +19,62 @@
       {
         "command": "swaggerToAxios.setDefaultOutputDir",
         "title": "设置Swagger转API默认输出目录"
+      },
+      {
+        "command": "swaggerToAxios.createConfigFile",
+        "title": "创建Swagger到API配置文件模板"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Swagger to Axios",
+      "properties": {
+        "swaggerToAxios.output.directory": {
+          "type": "string",
+          "default": "api",
+          "description": "API文件生成的默认输出目录"
+        },
+        "swaggerToAxios.output.useTypeScript": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否生成TypeScript文件(.ts)而不是JavaScript文件(.js)"
+        },
+        "swaggerToAxios.output.cleanBeforeGenerate": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否在生成前清空输出目录中的生成文件"
+        },
+        "swaggerToAxios.codeStyle.useSingleQuotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "使用单引号而不是双引号"
+        },
+        "swaggerToAxios.codeStyle.useSemicolons": {
+          "type": "boolean",
+          "default": true,
+          "description": "在代码末尾使用分号"
+        },
+        "swaggerToAxios.codeStyle.indentSize": {
+          "type": "integer",
+          "default": 2,
+          "description": "代码缩进大小"
+        },
+        "swaggerToAxios.imports.requestLibrary": {
+          "type": "string",
+          "default": "import request from '@/utils/request';",
+          "description": "请求库导入语句"
+        },
+        "swaggerToAxios.imports.moduleNormal": {
+          "type": "string",
+          "default": "api",
+          "description": "API模块名"
+        },
+        "swaggerToAxios.configFile.path": {
+          "type": "string",
+          "default": "swagger-to-axios.config.js",
+          "description": "配置文件路径（相对于工作区根目录）"
+        }
+      }
+    }
   },
   "activationEvents": [
     "onCommand:swaggerToAxios.convert"
