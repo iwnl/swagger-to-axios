@@ -618,6 +618,28 @@ async function handleOpenConfigUI() {
                     });
                     console.log('已发送配置到WebView');
                 }
+                else if (message.command === 'getConfig') {
+                    console.log('处理获取配置命令');
+                    // 获取当前配置
+                    const currentConfig = loadConfiguration(workspaceRoot);
+                    
+                    // 发送配置到webview
+                    panel.webview.postMessage({
+                        command: 'setConfig',
+                        config: currentConfig
+                    });
+                    console.log('已发送当前配置到WebView');
+                }
+                else if (message.command === 'getDefaultConfig') {
+                    console.log('处理获取默认配置命令');
+                    
+                    // 发送默认配置到webview
+                    panel.webview.postMessage({
+                        command: 'setConfig',
+                        config: defaultConfig
+                    });
+                    console.log('已发送默认配置到WebView');
+                }
             } catch (error) {
                 console.error('处理WebView消息失败:', error);
                 vscode.window.showErrorMessage(`处理配置失败: ${error.message}`);
