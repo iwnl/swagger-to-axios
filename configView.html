@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Swagger to Axios 配置</title>
+  <style>
+    :root {
+      --background-color: var(--vscode-editor-background);
+      --foreground-color: var(--vscode-editor-foreground);
+      --input-background: var(--vscode-input-background);
+      --input-foreground: var(--vscode-input-foreground);
+      --button-background: var(--vscode-button-background);
+      --button-foreground: var(--vscode-button-foreground);
+      --button-hover-background: var(--vscode-button-hoverBackground);
+      --border-color: var(--vscode-panel-border);
+      --tab-active-background: var(--vscode-tab-activeBackground);
+      --tab-inactive-background: var(--vscode-tab-inactiveBackground);
+    }
+    
+    body {
+      font-family: var(--vscode-font-family);
+      color: var(--foreground-color);
+      background-color: var(--background-color);
+      padding: 20px;
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      font-size: 1.5em;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+    
+    .section {
+      margin-bottom: 30px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 15px;
+    }
+    
+    .section-title {
+      font-size: 1.2em;
+      margin-top: 0;
+      margin-bottom: 15px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 5px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+      display: flex;
+      flex-wrap: wrap;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      width: 250px;
+      padding-right: 15px;
+    }
+    
+    .form-control {
+      background-color: var(--input-background);
+      color: var(--input-foreground);
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      padding: 6px 8px;
+      min-width: 250px;
+      font-size: 14px;
+    }
+    
+    .form-control:focus {
+      outline: none;
+      border-color: var(--button-background);
+    }
+    
+    .checkbox-control {
+      margin-top: 6px;
+    }
+    
+    button {
+      background-color: var(--button-background);
+      color: var(--button-foreground);
+      border: none;
+      border-radius: 3px;
+      padding: 8px 12px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    
+    button:hover {
+      background-color: var(--button-hover-background);
+    }
+    
+    .button-group {
+      margin-top: 20px;
+      text-align: right;
+    }
+    
+    select {
+      background-color: var(--input-background);
+      color: var(--input-foreground);
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      padding: 6px 8px;
+      min-width: 250px;
+    }
+    
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 20px;
+    }
+    
+    .tab {
+      padding: 10px 15px;
+      cursor: pointer;
+      background-color: var(--tab-inactive-background);
+      border: 1px solid var(--border-color);
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      margin-right: 5px;
+    }
+    
+    .tab.active {
+      background-color: var(--tab-active-background);
+      border-bottom: 1px solid var(--tab-active-background);
+      position: relative;
+      top: 1px;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .help-text {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+    
+    .nested-section {
+      margin-left: 20px;
+      border-left: 3px solid var(--border-color);
+      padding-left: 15px;
+      margin-bottom: 15px;
+    }
+    
+    .error {
+      color: #ff5555;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Swagger to Axios 配置界面</h1>
+    
+    <div class="tabs">
+      <div class="tab active" data-tab="basic">基础配置</div>
+      <div class="tab" data-tab="codeStyle">代码风格</div>
+      <div class="tab" data-tab="naming">命名规范</div>
+      <div class="tab" data-tab="imports">导入配置</div>
+      <div class="tab" data-tab="request">请求处理</div>
+      <div class="tab" data-tab="comments">注释配置</div>
+      <div class="tab" data-tab="types">类型定义</div>
+      <div class="tab" data-tab="advanced">高级配置</div>
+    </div>
+    
+    <form id="configForm">
+      <!-- 基础配置 Tab -->
+      <div class="tab-content active" id="basic-tab">
+        <div class="section">
+          <h2 class="section-title">输出配置</h2>
+          
+          <div class="form-group">
+            <label for="useTypeScript">使用TypeScript：</label>
+            <input type="checkbox" id="useTypeScript" class="checkbox-control" data-path="output.useTypeScript">
+            <div class="help-text">是否生成TypeScript文件(.ts)而不是JavaScript文件(.js)</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="fileExtension">文件扩展名：</label>
+            <input type="text" id="fileExtension" class="form-control" data-path="output.fileExtension">
+            <div class="help-text">生成文件的扩展名，如 .js 或 .ts</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="outputDir">输出目录：</label>
+            <input type="text" id="outputDir" class="form-control" data-path="output.outputDir">
+            <div class="help-text">API文件生成的输出目录路径</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="cleanOutputDir">生成前清空目录：</label>
+            <input type="checkbox" id="cleanOutputDir" class="checkbox-control" data-path="output.cleanOutputDir">
+            <div class="help-text">是否在生成前清空输出目录中的生成文件</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="fileNaming">生成文件命名模式：</label>
+            <input type="text" id="fileNaming" class="form-control" data-path="output.fileNaming">
+            <div class="help-text">生成文件的命名格式，使用 {{name}} 作为替换符</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="customFileNaming">自定义文件命名模式：</label>
+            <input type="text" id="customFileNaming" class="form-control" data-path="output.customFileNaming">
+            <div class="help-text">自定义文件的命名格式，使用 {{name}} 作为替换符</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 代码风格 Tab -->
+      <div class="tab-content" id="codeStyle-tab">
+        <div class="section">
+          <h2 class="section-title">代码风格配置</h2>
+          
+          <div class="form-group">
+            <label for="indentType">缩进类型：</label>
+            <select id="indentType" class="form-control" data-path="codeStyle.indentType">
+              <option value="space">空格</option>
+              <option value="tab">制表符</option>
+            </select>
+            <div class="help-text">代码缩进使用空格还是制表符</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="indentSize">缩进大小：</label>
+            <input type="number" id="indentSize" class="form-control" min="1" max="8" data-path="codeStyle.indentSize">
+            <div class="help-text">每级缩进的空格数量</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="useSemicolons">使用分号：</label>
+            <input type="checkbox" id="useSemicolons" class="checkbox-control" data-path="codeStyle.useSemicolons">
+            <div class="help-text">是否在语句末尾使用分号</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="useSingleQuotes">使用单引号：</label>
+            <input type="checkbox" id="useSingleQuotes" class="checkbox-control" data-path="codeStyle.useSingleQuotes">
+            <div class="help-text">是否使用单引号而非双引号</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="trailingComma">尾逗号风格：</label>
+            <select id="trailingComma" class="form-control" data-path="codeStyle.trailingComma">
+              <option value="none">无尾逗号</option>
+              <option value="es5">ES5兼容</option>
+              <option value="all">所有可能位置</option>
+            </select>
+            <div class="help-text">对象和数组中是否使用尾随逗号</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 命名规范 Tab -->
+      <div class="tab-content" id="naming-tab">
+        <div class="section">
+          <h2 class="section-title">命名规范配置</h2>
+          
+          <div class="form-group">
+            <label for="apiFunctionNaming">API函数命名风格：</label>
+            <select id="apiFunctionNaming" class="form-control" data-path="naming.apiFunctionNaming">
+              <option value="camelCase">驼峰命名(camelCase)</option>
+              <option value="PascalCase">帕斯卡命名(PascalCase)</option>
+              <option value="snake_case">蛇形命名(snake_case)</option>
+            </select>
+            <div class="help-text">API函数的命名风格</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="parameterNaming">参数命名风格：</label>
+            <select id="parameterNaming" class="form-control" data-path="naming.parameterNaming">
+              <option value="camelCase">驼峰命名(camelCase)</option>
+              <option value="PascalCase">帕斯卡命名(PascalCase)</option>
+              <option value="snake_case">蛇形命名(snake_case)</option>
+            </select>
+            <div class="help-text">参数的命名风格</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 导入配置 Tab -->
+      <div class="tab-content" id="imports-tab">
+        <div class="section">
+          <h2 class="section-title">导入配置</h2>
+          
+          <div class="form-group">
+            <label for="requestLibrary">请求库导入语句：</label>
+            <input type="text" id="requestLibrary" class="form-control" data-path="imports.requestLibrary">
+            <div class="help-text">用于导入请求库的语句</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="importTypes">导入类型：</label>
+            <input type="checkbox" id="importTypes" class="checkbox-control" data-path="imports.importTypes">
+            <div class="help-text">是否导入类型定义</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="moduleNormal">模块名：</label>
+            <input type="text" id="moduleNormal" class="form-control" data-path="imports.moduleNormal">
+            <div class="help-text">API模块名</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="basePath">基础路径：</label>
+            <input type="text" id="basePath" class="form-control" data-path="imports.basePath">
+            <div class="help-text">API请求的基础路径</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="additionalImports">额外导入语句：</label>
+            <textarea id="additionalImports" class="form-control" rows="4" data-path="imports.additionalImports" data-type="json"></textarea>
+            <div class="help-text">额外的导入语句，每行一个或JSON数组格式</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 请求处理 Tab -->
+      <div class="tab-content" id="request-tab">
+        <div class="section">
+          <h2 class="section-title">请求处理配置</h2>
+          
+          <div class="form-group">
+            <label for="defaultRequestOptions">默认请求选项：</label>
+            <textarea id="defaultRequestOptions" class="form-control" rows="4" data-path="request.defaultRequestOptions" data-type="json"></textarea>
+            <div class="help-text">默认的请求选项，JSON格式</div>
+          </div>
+          
+          <h3>响应处理</h3>
+          <div class="nested-section">
+            <div class="form-group">
+              <label for="transform">转换响应：</label>
+              <input type="checkbox" id="transform" class="checkbox-control" data-path="request.responseHandling.transform">
+              <div class="help-text">是否转换API响应</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="transformFunctionName">转换函数名：</label>
+              <input type="text" id="transformFunctionName" class="form-control" data-path="request.responseHandling.transformFunctionName">
+              <div class="help-text">响应转换函数的名称</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 注释配置 Tab -->
+      <div class="tab-content" id="comments-tab">
+        <div class="section">
+          <h2 class="section-title">注释配置</h2>
+          
+          <div class="form-group">
+            <label for="generateJSDoc">生成JSDoc注释：</label>
+            <input type="checkbox" id="generateJSDoc" class="checkbox-control" data-path="comments.generateJSDoc">
+            <div class="help-text">是否生成JSDoc格式的函数注释</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="includeParamDescriptions">包含参数描述：</label>
+            <input type="checkbox" id="includeParamDescriptions" class="checkbox-control" data-path="comments.includeParamDescriptions">
+            <div class="help-text">是否在注释中包含参数描述</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="includeResponseType">包含响应类型：</label>
+            <input type="checkbox" id="includeResponseType" class="checkbox-control" data-path="comments.includeResponseType">
+            <div class="help-text">是否在注释中包含响应类型</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="includeDeprecationWarnings">包含弃用警告：</label>
+            <input type="checkbox" id="includeDeprecationWarnings" class="checkbox-control" data-path="comments.includeDeprecationWarnings">
+            <div class="help-text">是否在注释中包含弃用警告</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 类型定义 Tab -->
+      <div class="tab-content" id="types-tab">
+        <div class="section">
+          <h2 class="section-title">类型定义配置</h2>
+          
+          <div class="form-group">
+            <label for="generateInterfaces">生成接口：</label>
+            <input type="checkbox" id="generateInterfaces" class="checkbox-control" data-path="types.generateInterfaces">
+            <div class="help-text">是否生成TypeScript接口定义</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="interfacePrefix">接口前缀：</label>
+            <input type="text" id="interfacePrefix" class="form-control" data-path="types.interfacePrefix">
+            <div class="help-text">接口名称的前缀，如 'I'</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="interfaceSuffix">接口后缀：</label>
+            <input type="text" id="interfaceSuffix" class="form-control" data-path="types.interfaceSuffix">
+            <div class="help-text">接口名称的后缀</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="exportTypes">导出类型：</label>
+            <input type="checkbox" id="exportTypes" class="checkbox-control" data-path="types.exportTypes">
+            <div class="help-text">是否导出生成的类型定义</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 高级配置 Tab -->
+      <div class="tab-content" id="advanced-tab">
+        <div class="section">
+          <h2 class="section-title">高级配置</h2>
+          
+          <h3>自定义模板</h3>
+          <div class="nested-section">
+            <div class="form-group">
+              <label for="apiFunction">API函数模板：</label>
+              <textarea id="apiFunction" class="form-control" rows="4" data-path="advanced.templates.apiFunction"></textarea>
+              <div class="help-text">自定义API函数代码模板</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="typeDefinition">类型定义模板：</label>
+              <textarea id="typeDefinition" class="form-control" rows="4" data-path="advanced.templates.typeDefinition"></textarea>
+              <div class="help-text">自定义类型定义代码模板</div>
+            </div>
+            
+            <div class="form-group">
+              <label for="customFile">自定义文件模板：</label>
+              <textarea id="customFile" class="form-control" rows="4" data-path="advanced.templates.customFile"></textarea>
+              <div class="help-text">自定义文件代码模板</div>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="typeMapping">类型映射：</label>
+            <textarea id="typeMapping" class="form-control" rows="4" data-path="advanced.typeMapping" data-type="json"></textarea>
+            <div class="help-text">Swagger类型到TypeScript/JavaScript类型的映射，JSON格式</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="functionDecorators">函数装饰器：</label>
+            <textarea id="functionDecorators" class="form-control" rows="4" data-path="advanced.functionDecorators" data-type="json"></textarea>
+            <div class="help-text">应用于生成函数的装饰器，JSON数组格式</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="beforeRequest">请求前处理：</label>
+            <textarea id="beforeRequest" class="form-control" rows="4" data-path="advanced.beforeRequest"></textarea>
+            <div class="help-text">请求前处理代码</div>
+          </div>
+          
+          <div class="form-group">
+            <label for="afterRequest">请求后处理：</label>
+            <textarea id="afterRequest" class="form-control" rows="4" data-path="advanced.afterRequest"></textarea>
+            <div class="help-text">请求后处理代码</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="button-group">
+        <button type="button" id="loadDefaultBtn">加载默认配置</button>
+        <button type="button" id="resetBtn">重置表单</button>
+        <button type="button" id="saveBtn">保存配置</button>
+      </div>
+    </form>
+  </div>
+  
+  <script>
+    (function() {
+      // 获取VSCode API
+      const vscode = acquireVsCodeApi();
+      
+      // 保存当前配置状态
+      let currentConfig = {};
+      
+      // DOM加载完成后初始化
+      document.addEventListener('DOMContentLoaded', function() {
+        // 初始化标签切换
+        initTabs();
+        
+        // 设置按钮事件监听
+        document.getElementById('loadDefaultBtn').addEventListener('click', loadDefaultConfig);
+        document.getElementById('resetBtn').addEventListener('click', resetForm);
+        document.getElementById('saveBtn').addEventListener('click', saveConfig);
+        
+        // 请求当前配置
+        vscode.postMessage({
+          command: 'getConfig'
+        });
+      });
+      
+      // 处理来自VSCode的消息
+      window.addEventListener('message', event => {
+        const message = event.data;
+        
+        switch (message.command) {
+          case 'setConfig':
+            currentConfig = message.config;
+            updateFormValues(currentConfig);
+            break;
+        }
+      });
+      
+      // 初始化标签页切换
+      function initTabs() {
+        const tabs = document.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+          tab.addEventListener('click', function() {
+            const tabId = this.getAttribute('data-tab');
+            
+            // 更新活动标签
+            tabs.forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            
+            // 更新活动内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+              content.classList.remove('active');
+            });
+            document.getElementById(`${tabId}-tab`).classList.add('active');
+          });
+        });
+      }
+      
+      // 更新表单值
+      function updateFormValues(config) {
+        const inputs = document.querySelectorAll('[data-path]');
+        
+        inputs.forEach(input => {
+          const path = input.getAttribute('data-path').split('.');
+          let value = config;
+          
+          // 根据路径获取嵌套值
+          for (const key of path) {
+            if (value === undefined || value === null) break;
+            value = value[key];
+          }
+          
+          if (value === undefined || value === null) return;
+          
+          const type = input.getAttribute('data-type');
+          
+          if (input.type === 'checkbox') {
+            input.checked = Boolean(value);
+          } else if (input.tagName === 'SELECT') {
+            input.value = value;
+          } else if (input.tagName === 'TEXTAREA' && type === 'json') {
+            input.value = JSON.stringify(value, null, 2);
+          } else {
+            input.value = value;
+          }
+        });
+      }
+      
+      // 从表单中获取配置对象
+      function getConfigFromForm() {
+        const config = {};
+        const inputs = document.querySelectorAll('[data-path]');
+        
+        inputs.forEach(input => {
+          const path = input.getAttribute('data-path').split('.');
+          let current = config;
+          
+          // 创建嵌套对象
+          for (let i = 0; i < path.length - 1; i++) {
+            const key = path[i];
+            if (!current[key]) {
+              current[key] = {};
+            }
+            current = current[key];
+          }
+          
+          const lastKey = path[path.length - 1];
+          const type = input.getAttribute('data-type');
+          
+          if (input.type === 'checkbox') {
+            current[lastKey] = input.checked;
+          } else if (input.type === 'number') {
+            current[lastKey] = parseInt(input.value, 10);
+          } else if (input.tagName === 'TEXTAREA' && type === 'json') {
+            try {
+              current[lastKey] = input.value ? JSON.parse(input.value) : null;
+              input.classList.remove('error-input');
+              
+              // 清除错误消息
+              const errorEl = input.nextElementSibling?.classList.contains('error') 
+                ? input.nextElementSibling 
+                : null;
+              if (errorEl) {
+                errorEl.remove();
+              }
+            } catch (e) {
+              input.classList.add('error-input');
+              
+              // 添加错误消息
+              const errorEl = input.nextElementSibling?.classList.contains('error') 
+                ? input.nextElementSibling 
+                : document.createElement('div');
+              
+              if (!input.nextElementSibling?.classList.contains('error')) {
+                errorEl.className = 'error';
+                input.insertAdjacentElement('afterend', errorEl);
+              }
+              
+              errorEl.textContent = `JSON解析错误: ${e.message}`;
+              return null;
+            }
+          } else {
+            current[lastKey] = input.value;
+          }
+        });
+        
+        return config;
+      }
+      
+      // 加载默认配置
+      function loadDefaultConfig() {
+        vscode.postMessage({
+          command: 'getDefaultConfig'
+        });
+      }
+      
+      // 重置表单
+      function resetForm() {
+        updateFormValues(currentConfig);
+      }
+      
+      // 保存配置
+      function saveConfig() {
+        const config = getConfigFromForm();
+        if (!config) return; // 校验失败
+        
+        vscode.postMessage({
+          command: 'saveConfig',
+          config: config
+        });
+      }
+    })();
+  </script>
+</body>
+</html> 

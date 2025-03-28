@@ -20,11 +20,12 @@ const JS_RESERVED_KEYWORDS = [
 /**
  * 从文件或URL获取Swagger数据
  * @param {string} source - 文件路径或URL
+ * @param {object} authConfig - 认证配置
  * @returns {Promise<object>} - Swagger数据对象
  */
-async function getSwaggerData(source) {
+async function getSwaggerData(source, authConfig = {}) {
   if (source.startsWith('http://') || source.startsWith('https://')) {
-    return fetchSwaggerFromUrl(source);
+    return fetchSwaggerFromUrl(source, authConfig);
   } else {
     return readSwaggerFromFile(source);
   }
@@ -33,19 +34,74 @@ async function getSwaggerData(source) {
 /**
  * 从URL获取Swagger数据
  * @param {string} swaggerUrl - Swagger文档URL
+ * @param {object} authConfig - 认证配置 {type, credentials}
  * @returns {Promise<object>} - Swagger数据对象
  */
-function fetchSwaggerFromUrl(swaggerUrl) {
+function fetchSwaggerFromUrl(swaggerUrl, authConfig = {}) {
   return new Promise((resolve, reject) => {
     const parsedUrl = url.parse(swaggerUrl);
     const httpModule = swaggerUrl.startsWith('https://') ? https : http;
     
-    const request = httpModule.request({
+    // 添加API Key查询参数（如果需要）
+    let apiPath = parsedUrl.path;
+    if (authConfig.type === 'apikey' && 
+        authConfig.credentials && 
+        authConfig.credentials.in === 'query' &&
+        authConfig.credentials.name &&
+        authConfig.credentials.value) {
+      
+      const separator = apiPath.includes('?') ? '&' : '?';
+      apiPath = `${apiPath}${separator}${authConfig.credentials.name}=${encodeURIComponent(authConfig.credentials.value)}`;
+    }
+    
+    // 设置请求选项，添加适当的请求头
+    const options = {
       hostname: parsedUrl.hostname,
       port: parsedUrl.port,
-      path: parsedUrl.path,
-      method: 'GET'
-    }, (response) => {
+      path: apiPath,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 Swagger API Generator',
+        'Accept': 'application/json, */*',
+        'Accept-Encoding': 'identity'  // 不要压缩内容
+      }
+    };
+    
+    // 添加认证头
+    if (authConfig && authConfig.type) {
+      addAuthHeaders(options.headers, authConfig);
+    }
+    
+    // 打印请求信息（调试用）
+    console.log(`正在请求: ${swaggerUrl}`);
+    console.log('请求头:', JSON.stringify(options.headers, null, 2));
+    
+    const request = httpModule.request(options, (response) => {
+      // 处理重定向
+      if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307) {
+        if (response.headers.location) {
+          console.log(`收到重定向，正在跟随重定向到: ${response.headers.location}`);
+          return fetchSwaggerFromUrl(response.headers.location, authConfig)
+            .then(resolve)
+            .catch(reject);
+        } else {
+          return reject(new Error(`收到重定向响应(${response.statusCode})，但没有location头`));
+        }
+      }
+      
+      // 检查HTTP状态码
+      if (response.statusCode !== 200) {
+        return reject(new Error(`HTTP请求失败，状态码: ${response.statusCode}`));
+      }
+      
+      // 检查内容类型
+      const contentType = response.headers['content-type'] || '';
+      if (!contentType.includes('application/json') && 
+          !contentType.includes('text/plain') && 
+          !contentType.includes('text/yaml')) {
+        console.warn(`警告: 响应内容类型不是JSON (${contentType})，尝试继续解析...`);
+      }
+      
       let data = '';
       
       response.on('data', (chunk) => {
@@ -54,12 +110,47 @@ function fetchSwaggerFromUrl(swaggerUrl) {
       
       response.on('end', () => {
         try {
-          const swaggerData = JSON.parse(data);
+          // 尝试处理响应数据
+          if (!data || data.trim() === '') {
+            return reject(new Error('服务器返回了空响应'));
+          }
+          
+          let swaggerData;
+          
+          // 尝试解析JSON
+          try {
+            swaggerData = JSON.parse(data);
+          } catch (jsonError) {
+            // 如果不是有效的JSON，且看起来像YAML，添加提示
+            if (data.includes(':') && data.includes('\n')) {
+              return reject(new Error(`无法解析为JSON，可能是YAML格式。请先转换为JSON: ${jsonError.message}`));
+            }
+            
+            // 如果看起来像HTML，给出更明确的错误
+            if (data.includes('<html>') || data.includes('<!DOCTYPE')) {
+              return reject(new Error(`收到HTML响应而非JSON。可能是URL错误或需要认证`));
+            }
+            
+            // 未知格式错误
+            return reject(new Error(`无法解析Swagger JSON: ${jsonError.message}`));
+          }
+          
+          // 验证是否看起来像Swagger文档
+          if (!swaggerData.swagger && !swaggerData.openapi && !swaggerData.paths) {
+            console.warn('警告: 响应看起来不像有效的Swagger/OpenAPI文档');
+          }
+          
           resolve(swaggerData);
         } catch (error) {
-          reject(new Error(`无法解析Swagger JSON: ${error.message}`));
+          reject(new Error(`处理Swagger数据时出错: ${error.message}`));
         }
       });
+    });
+    
+    // 设置请求超时
+    request.setTimeout(30000, () => {
+      request.abort();
+      reject(new Error('请求超时(30秒)'));
     });
     
     request.on('error', (error) => {
@@ -94,16 +185,68 @@ function readSwaggerFromFile(filePath) {
 }
 
 /**
+ * 添加认证头到请求
+ * @param {object} headers - 请求头对象
+ * @param {object} authConfig - 认证配置
+ */
+function addAuthHeaders(headers, authConfig) {
+  const { type, credentials } = authConfig;
+  
+  switch (type.toLowerCase()) {
+    case 'basic':
+      // Basic认证: 用户名/密码
+      if (credentials && credentials.username && credentials.password) {
+        const auth = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64');
+        headers['Authorization'] = `Basic ${auth}`;
+      }
+      break;
+      
+    case 'bearer':
+    case 'token':
+      // Bearer Token认证
+      if (credentials && credentials.token) {
+        headers['Authorization'] = `Bearer ${credentials.token}`;
+      }
+      break;
+      
+    case 'apikey':
+      // API Key认证
+      if (credentials && credentials.name && credentials.value) {
+        // API key可能在header或query参数中
+        if (credentials.in === 'query') {
+          // 这种情况需要在URL中添加参数，而不是在头部
+          // 由调用方处理
+        } else {
+          // 默认放在header中
+          headers[credentials.name] = credentials.value;
+        }
+      }
+      break;
+      
+    case 'custom':
+      // 自定义头部认证
+      if (credentials && typeof credentials === 'object') {
+        // 添加所有提供的自定义头部
+        Object.entries(credentials).forEach(([key, value]) => {
+          headers[key] = value;
+        });
+      }
+      break;
+  }
+}
+
+/**
  * 生成API文件对（.generated.js 与 .custom.js）
- * @param {object|string} swaggerData - Swagger数据对象或路径/URL
+ * @param {string} source - Swagger数据源（文件路径或URL）
  * @param {string} outputDir - 输出目录
  * @param {object} config - 配置选项
+ * @param {object} authConfig - 认证配置选项
+ * @returns {Promise<void>}
  */
-async function generateAxiosFiles(swaggerData, outputDir, config = {}) {
+async function generateAxiosFiles(source, outputDir, config = {}, authConfig = null) {
   try {
-    if (typeof swaggerData === 'string') {
-      swaggerData = await getSwaggerData(swaggerData);
-    }
+    // 获取Swagger数据
+    const swaggerData = await getSwaggerData(source, authConfig);
     // 保存definitions到全局变量，供后续展开schema使用
     global.swaggerDefinitions = swaggerData.definitions || {};
     

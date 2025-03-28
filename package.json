@@ -2,7 +2,7 @@
   "name": "swagger-to-axios",
   "displayName": "Swagger to Axios",
   "description": "A VS Code extension to convert Swagger API to Axios-based requests",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "publisher": "ZYL",
   "engines": {
     "vscode": "^1.75.0"
@@ -17,12 +17,8 @@
         "title": "转换Swagger到API文件"
       },
       {
-        "command": "swaggerToAxios.setDefaultOutputDir",
-        "title": "设置Swagger转API默认输出目录"
-      },
-      {
-        "command": "swaggerToAxios.createConfigFile",
-        "title": "创建Swagger到API配置文件模板"
+        "command": "swaggerToAxios.openConfigUI",
+        "title": "打开Swagger到Axios配置界面"
       }
     ],
     "configuration": {
@@ -77,7 +73,8 @@
     }
   },
   "activationEvents": [
-    "onCommand:swaggerToAxios.convert"
+    "onCommand:swaggerToAxios.convert",
+    "onCommand:swaggerToAxios.openConfigUI"
   ],
   "main": "./extension.js",
   "scripts": {
